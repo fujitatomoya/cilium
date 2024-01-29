@@ -1024,6 +1024,10 @@
      - Enables the fallback to the user-space implementation.
      - bool
      - ``false``
+   * - :spelling:ignore:`encryption.wireguard.hubMode`
+     - Enables the wireguard hub spoke mode, default false to p2p mode.
+     - bool
+     - ``false``
    * - :spelling:ignore:`endpointHealthChecking.enabled`
      - Enable connectivity health checking between virtual endpoints.
      - bool

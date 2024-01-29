@@ -774,6 +774,9 @@ const (
 	// WireguardPersistentKeepalivee controls Wireguard PersistentKeepalive option. Set 0 to disable.
 	WireguardPersistentKeepalive = "wireguard-persistent-keepalive"
 
+	// EnableWireguardHubMode is the name of the option that enables WireGuard hub spoke mode
+        EnableWireguardHubmode = "enable-wireguard-hub-mode"
+
 	// NodeEncryptionOptOutLabels is the name of the option for the node-to-node encryption opt-out labels
 	NodeEncryptionOptOutLabels = "node-encryption-opt-out-labels"
 
@@ -1720,6 +1723,9 @@ type DaemonConfig struct {
 
 	// WireguardPersistentKeepalive controls Wireguard PersistentKeepalive option.
 	WireguardPersistentKeepalive time.Duration
+
+	// EnableWireguardHubmode enables the wireguard hub spoke mode
+        EnableWireguardHubmode bool
 
 	// EnableL2Announcements enables L2 announcement of service IPs
 	EnableL2Announcements bool
@@ -3035,6 +3041,7 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	c.L2AnnouncerRenewDeadline = vp.GetDuration(L2AnnouncerRenewDeadline)
 	c.L2AnnouncerRetryPeriod = vp.GetDuration(L2AnnouncerRetryPeriod)
 	c.EnableWireguardUserspaceFallback = vp.GetBool(EnableWireguardUserspaceFallback)
+	c.EnableWireguardHubmode = vp.GetBool(EnableWireguardHubmode)
 	c.WireguardPersistentKeepalive = vp.GetDuration(WireguardPersistentKeepalive)
 	c.EnableWellKnownIdentities = vp.GetBool(EnableWellKnownIdentities)
 	c.EnableXDPPrefilter = vp.GetBool(EnableXDPPrefilter)

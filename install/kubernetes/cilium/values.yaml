@@ -143,7 +143,8 @@ rollOutCiliumPods: false
 # -- Agent container image.
 image:
   override: ~
-  repository: "quay.io/cilium/cilium-ci"
+  # repository: "quay.io/cilium/cilium-ci"
+  repository: "docker.io/gaofeng1973/cilium"
   tag: "latest"
   pullPolicy: "Always"
   # cilium-digest
@@ -846,6 +847,8 @@ encryption:
     userspaceFallback: false
     # -- Controls Wireguard PersistentKeepalive option. Set 0s to disable.
     persistentKeepalive: 0s
+    # -- Enables the wireguard hub mode by true.
+    hubMode: false
 
   # -- Deprecated in favor of encryption.ipsec.keyFile. To be removed in 1.15.
   # Name of the key file inside the Kubernetes secret configured via secretName.

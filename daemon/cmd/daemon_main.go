@@ -393,6 +393,9 @@ func InitGlobalFlags(cmd *cobra.Command, vp *viper.Viper) {
 	flags.Duration(option.WireguardPersistentKeepalive, 0, "The Wireguard keepalive interval as a Go duration string")
 	option.BindEnv(vp, option.WireguardPersistentKeepalive)
 
+	flags.Bool(option.EnableWireguardHubmode, false, "Enable WireGuard hub spoke mode")
+	option.BindEnv(vp, option.EnableWireguardHubmode)
+
 	flags.String(option.NodeEncryptionOptOutLabels, defaults.NodeEncryptionOptOutLabels, "Label selector for nodes which will opt-out of node-to-node encryption")
 	option.BindEnv(vp, option.NodeEncryptionOptOutLabels)
 

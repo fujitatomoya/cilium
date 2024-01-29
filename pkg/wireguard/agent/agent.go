@@ -13,7 +13,12 @@ import (
 	"io"
 	"net"
 	"os"
+	//"time"
 	"strconv"
+
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/go-openapi/strfmt"
 	"github.com/sirupsen/logrus"
@@ -79,6 +84,11 @@ type Agent struct {
 
 	optOut                 bool
 	requireNodesInPeerList bool
+
+	//added to handle hub-spoke mode
+	isMasterNode           bool
+	masterNodeName         string
+	peerMasternode         *peerConfig
 }
 
 // NewAgent creates a new WireGuard Agent
@@ -91,6 +101,37 @@ func NewAgent(privKeyPath string, localNodeStore *node.LocalNodeStore) (*Agent, 
 	wgClient, err := wgctrl.New()
 	if err != nil {
 		return nil, err
+	}
+
+	isMaster := false
+	masternodename := ""
+
+	//Try to get the cluster's master node then consider it as a hub
+	//The clientset
+	config, _ := rest.InClusterConfig()
+	clientset, _ := kubernetes.NewForConfig(config)
+
+	//Get the master node's name
+	nodes, _ := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	for _, node := range nodes.Items{
+		for key, _ := range node.Labels {
+			if key == "node-role.kubernetes.io/control-plane" {
+				masternodename = node.Name
+				fmt.Println("=======Find cluster master node:", masternodename)
+			}
+		}
+	}
+
+	//Make sure current node is master(hub) node or not(spoke)
+	currentNodeName := os.Getenv("K8S_NODE_NAME")
+	fmt.Println("========current node name:", currentNodeName)
+
+	if masternodename  == currentNodeName {
+		fmt.Println("======== this is master node as hub.")
+		isMaster = true
+	} else {
+		fmt.Println("====== this is the edge node as spoke.")
+		isMaster = false
 	}
 
 	optOut := false
@@ -117,6 +158,13 @@ func NewAgent(privKeyPath string, localNodeStore *node.LocalNodeStore) (*Agent, 
 			// Enapsulated pkt is encrypted in tunneling mode. So, outer
 			// src/dst IP (= nodes IP) needs to be in the WG peer list.
 			option.Config.TunnelingEnabled(),
+
+		isMasterNode:  isMaster,
+		masterNodeName: masternodename,
+                peerMasternode: &peerConfig{
+		                endpoint:   nil,
+				},
+
 	}, nil
 }
 
@@ -219,6 +267,13 @@ func (a *Agent) Init(ipcache *ipcache.IPCache, mtuConfig mtu.Configuration) erro
 		},
 	}
 
+        // checkpoint wirguard  hub-spoke mode setting
+	if option.Config.EnableWireguardHubmode {
+                        fmt.Println("!!!!!!!!!!!!!!!!!! Using wireguard hub-spoke mode")
+	} else {
+		fmt.Println("!!!!!!!!!!!!!!!!!! Using wireguard peer-2-peer mode")
+	}
+
 	err := netlink.LinkAdd(link)
 	if err != nil && !errors.Is(err, unix.EEXIST) {
 		if !errors.Is(err, unix.EOPNOTSUPP) {
@@ -243,12 +298,12 @@ func (a *Agent) Init(ipcache *ipcache.IPCache, mtuConfig mtu.Configuration) erro
 		}
 	}
 
-	fwMark := linux_defaults.MagicMarkWireGuardEncrypted
+	//fwMark := linux_defaults.MagicMarkWireGuardEncrypted
 	cfg := wgtypes.Config{
 		PrivateKey:   &a.privKey,
 		ListenPort:   &a.listenPort,
 		ReplacePeers: false,
-		FirewallMark: &fwMark,
+	//	FirewallMark: &fwMark,
 	}
 	if err := a.wgClient.ConfigureDevice(types.IfaceName, cfg); err != nil {
 		return fmt.Errorf("failed to configure WireGuard device: %w", err)
@@ -325,6 +380,8 @@ func (a *Agent) UpdatePeer(nodeName, pubKeyHex string, nodeIPv4, nodeIPv6 net.IP
 		return err
 	}
 
+	fmt.Println("++++++++update peer: peername:", nodeName)
+
 	if prevNodeName, ok := a.nodeNameByPubKey[pubKey]; ok {
 		if nodeName != prevNodeName {
 			return fmt.Errorf("detected duplicate public key. "+
@@ -336,7 +393,7 @@ func (a *Agent) UpdatePeer(nodeName, pubKeyHex string, nodeIPv4, nodeIPv6 net.IP
 	if prev := a.peerByNodeName[nodeName]; prev != nil {
 		// Handle pubKey change
 		if prev.pubKey != pubKey {
-			log.WithField(logfields.NodeName, nodeName).Debug("Pubkey has changed")
+			log.WithField(logfields.NodeName, nodeName).Info("Pubkey has changed")
 			// pubKeys differ, so delete old peer
 			if err := a.deletePeerByPubKey(prev.pubKey); err != nil {
 				return err
@@ -380,6 +437,7 @@ func (a *Agent) UpdatePeer(nodeName, pubKeyHex string, nodeIPv4, nodeIPv6 net.IP
 				})
 			}
 		}
+
 		allowedIPs = append(allowedIPs, a.ipCache.LookupByHostRLocked(lookupIPv4, lookupIPv6)...)
 	}
 
@@ -397,7 +455,7 @@ func (a *Agent) UpdatePeer(nodeName, pubKeyHex string, nodeIPv4, nodeIPv6 net.IP
 		return fmt.Errorf("failed to resolve peer endpoint address: %w", err)
 	}
 
-	peer := &peerConfig{
+        peer := &peerConfig{
 		pubKey:     pubKey,
 		endpoint:   epAddr,
 		nodeIPv4:   nodeIPv4,
@@ -405,25 +463,74 @@ func (a *Agent) UpdatePeer(nodeName, pubKeyHex string, nodeIPv4, nodeIPv6 net.IP
 		allowedIPs: allowedIPs,
 	}
 
+	a.peerByNodeName[nodeName] = peer
+        a.nodeNameByPubKey[pubKey] = nodeName
+        if nodeIPv4 != nil {
+                a.nodeNameByNodeIP[nodeIPv4.String()] = nodeName
+        }
+        if nodeIPv6 != nil {
+                a.nodeNameByNodeIP[nodeIPv6.String()] = nodeName
+        }
+
+        err = a.reassemblyMasterHubConfig()
+
+	if err != nil {
+		return fmt.Errorf("failed to reasmbely master hub configs: %w", err)
+	}
+	// Now here configure the master (hub) peer config
+	masterNodeFullname := "kubernetes/" + a.masterNodeName
+	fmt.Println("++++++++configure master node peerconfig:")
+	if peerMaster := a.peerByNodeName[masterNodeFullname]; peerMaster != nil && masterNodeFullname == nodeName {
+		masterNodeInternalIP := peerMaster.nodeIPv4.String() + ":51871"
+		fmt.Println("+++++++++ masternode internal IP:", masterNodeInternalIP)
+		masterepAddr, _ := net.ResolveUDPAddr("udp", masterNodeInternalIP)
+		a.peerMasternode.pubKey = peerMaster.pubKey
+		a.peerMasternode.endpoint = masterepAddr
+		a.peerMasternode.nodeIPv4 = peerMaster.nodeIPv4
+		a.peerMasternode.nodeIPv6 = peerMaster.nodeIPv6
+		//peerMasternode.allowedIPs = append(peerMasternode.allowedIPs, allowedIPs)
+	}
+
 	log.WithFields(logrus.Fields{
 		logfields.NodeName: nodeName,
 		logfields.PubKey:   pubKeyHex,
 		logfields.NodeIPv4: nodeIPv4,
 		logfields.NodeIPv6: nodeIPv6,
-	}).Debug("Updating peer")
+		logfields.IPAddrs:  peer.allowedIPs,
+	}).Debug("+++++++++Updating peer")
 
-	if err := a.updatePeerByConfig(peer); err != nil {
-		return err
+	if option.Config.EnableWireguardHubmode {
+		if a.isMasterNode {
+			fmt.Println("++++++++ hub configued:")
+			if err := a.updatePeerByConfig(peer); err != nil {
+				//fmt.Println("++++++++ hub configued:")
+				return err
+			}
+		}
+
+		if a.isMasterNode == false && a.peerMasternode.endpoint != nil {
+			fmt.Println("++++++++ spoke configured:")
+			if err := a.updatePeerByConfig(a.peerMasternode); err != nil {
+				//fmt.Println("++++++++ spoke configured:")
+				return err
+			}
+		}
+	} else {
+		fmt.Println("++++++++ peer-2-peer configued:")
+                if err := a.updatePeerByConfig(peer); err != nil {
+                       //fmt.Println("++++++++ hub configued:")
+                       return err
+                 }
 	}
 
-	a.peerByNodeName[nodeName] = peer
-	a.nodeNameByPubKey[pubKey] = nodeName
-	if nodeIPv4 != nil {
-		a.nodeNameByNodeIP[nodeIPv4.String()] = nodeName
-	}
-	if nodeIPv6 != nil {
-		a.nodeNameByNodeIP[nodeIPv6.String()] = nodeName
-	}
+	//a.peerByNodeName[nodeName] = peer
+	//a.nodeNameByPubKey[pubKey] = nodeName
+	//if nodeIPv4 != nil {
+	//	a.nodeNameByNodeIP[nodeIPv4.String()] = nodeName
+	//}
+	//if nodeIPv6 != nil {
+	//	a.nodeNameByNodeIP[nodeIPv6.String()] = nodeName
+	//}
 
 	return nil
 }
@@ -454,6 +561,38 @@ func (a *Agent) DeletePeer(nodeName string) error {
 	return nil
 }
 
+func (a *Agent) reassemblyMasterHubConfig( ) error {
+      // first clean up peerMasternode's allowIps
+      filtered := a.peerMasternode.allowedIPs[:0]
+      //for _, allowedIP := range p.allowedIPs {
+      //          if cidr.Equal(&allowedIP, &ip) {
+      //                  updated = true
+      //          } else {
+      //                  filtered = append(filtered, allowedIP)
+      //          }
+      //}
+      a.peerMasternode.allowedIPs = filtered
+
+
+      //resambely peer node's allowed IP to peermasternode.allowedIPS
+
+      for _, p := range a.peerByNodeName {
+                if (p != nil) {
+			for _, allowedIP := range p.allowedIPs {
+				//if cidr.Equal(&allowedIP, &ip) {
+				//}
+				a.peerMasternode.allowedIPs = append(a.peerMasternode.allowedIPs, allowedIP)
+			}
+                }
+        }
+	log.WithFields(logrus.Fields{
+                logfields.IPAddrs:  a.peerMasternode.allowedIPs,
+        }).Info("reassemblyMasterHubConfig")
+	fmt.Println("^^^^^^^^^^^^^^^^ reassemblyMasterHubConfig")
+	return nil
+
+}
+
 func (a *Agent) deletePeerByPubKey(pubKey wgtypes.Key) error {
 	log.WithField(logfields.PubKey, pubKey).Debug("Removing peer")
 
@@ -478,9 +617,15 @@ func (a *Agent) updatePeerByConfig(p *peerConfig) error {
 		AllowedIPs:        p.allowedIPs,
 		ReplaceAllowedIPs: true,
 	}
+
 	if option.Config.WireguardPersistentKeepalive != 0 {
-		peer.PersistentKeepaliveInterval = &option.Config.WireguardPersistentKeepalive
+              peer.PersistentKeepaliveInterval = &option.Config.WireguardPersistentKeepalive
+        }
+
+	if a.isMasterNode {
+	   peer.Endpoint = nil
 	}
+
 	cfg := wgtypes.Config{
 		ReplacePeers: false,
 		Peers:        []wgtypes.PeerConfig{peer},
@@ -490,7 +635,8 @@ func (a *Agent) updatePeerByConfig(p *peerConfig) error {
 		logfields.Endpoint: p.endpoint,
 		logfields.PubKey:   p.pubKey,
 		logfields.IPAddrs:  p.allowedIPs,
-	}).Debug("Updating peer config")
+	}).Info("Updating peer config")
+	fmt.Println("*************Updating peer config")
 
 	return a.wgClient.ConfigureDevice(types.IfaceName, cfg)
 }
@@ -559,6 +705,7 @@ func (a *Agent) OnIPIdentityCacheChange(modType ipcache.CacheModification, cidrC
 		}
 	case modType == ipcache.Upsert && newHostIP != nil:
 		if nodeName, ok := a.nodeNameByNodeIP[newHostIP.String()]; ok {
+			fmt.Println("=================OnIpCacheUpsert nodeName:",nodeName)
 			if peer := a.peerByNodeName[nodeName]; peer != nil {
 				if peer.insertAllowedIP(ipnet) {
 					updatedPeer = peer
@@ -567,18 +714,47 @@ func (a *Agent) OnIPIdentityCacheChange(modType ipcache.CacheModification, cidrC
 		}
 	}
 
-	if updatedPeer != nil {
-		if err := a.updatePeerByConfig(updatedPeer); err != nil {
-			log.WithFields(logrus.Fields{
-				logfields.Modification: modType,
-				logfields.IPAddr:       ipnet.String(),
-				logfields.OldNode:      oldHostIP,
-				logfields.NewNode:      newHostIP,
-				logfields.PubKey:       updatedPeer.pubKey,
-			}).WithError(err).
-				Error("Failed to update WireGuard peer after ipcache update")
+	err := a.reassemblyMasterHubConfig()
+        if err != nil {
+        }
+
+	if option.Config.EnableWireguardHubmode {
+		if updatedPeer != nil && a.isMasterNode { //&& updatedPeer.endpoint != nil {
+			fmt.Println("============ on ipcacheupsert hub configured:")
+			if err := a.updatePeerByConfig(updatedPeer); err != nil {
+				log.WithFields(logrus.Fields{
+					logfields.Modification: modType,
+					logfields.IPAddr:       ipnet.String(),
+					logfields.OldNode:      oldHostIP,
+					logfields.NewNode:      newHostIP,
+					logfields.PubKey:       updatedPeer.pubKey,
+				}).WithError(err).
+					Error("Failed to update WireGuard peer after ipcache update")
+			}
 		}
-	}
+
+		if a.isMasterNode == false && a.peerMasternode.endpoint != nil {
+			fmt.Println("============ on ipcacheupsert spoke configured:")
+				if err := a.updatePeerByConfig(a.peerMasternode); err != nil {
+				}
+			}
+		} else {
+			if updatedPeer != nil {
+				fmt.Println("============ on ipcacheupsert peer-2-peer configured:")
+				if err := a.updatePeerByConfig(updatedPeer); err != nil {
+					log.WithFields(logrus.Fields{
+						logfields.Modification: modType,
+						logfields.IPAddr:       ipnet.String(),
+						logfields.OldNode:      oldHostIP,
+						logfields.NewNode:      newHostIP,
+						logfields.PubKey:       updatedPeer.pubKey,
+					}).WithError(err).
+						Error("Failed to update WireGuard peer after ipcache update")
+					}
+				}
+			}
+
+
 }
 
 // Status returns the state of the WireGuard tunnel managed by this instance.
