@@ -14,7 +14,7 @@ func (a *Agent) NodeAdd(newNode nodeTypes.Node) error {
 	return a.nodeUpsert(newNode)
 }
 
-// NmdeUpdate is called when a node definition changes. Both the old
+// NodeUpdate is called when a node definition changes. Both the old
 // and new node definition is provided. NodeUpdate() is never called
 // before NodeAdd() is called for a particular node.
 func (a *Agent) NodeUpdate(_, newNode nodeTypes.Node) error {
