@@ -13,7 +13,6 @@ import (
 	"io"
 	"net"
 	"os"
-	//"time"
 	"strconv"
 
 	"k8s.io/client-go/kubernetes"
@@ -298,12 +297,12 @@ func (a *Agent) Init(ipcache *ipcache.IPCache, mtuConfig mtu.Configuration) erro
 		}
 	}
 
-	//fwMark := linux_defaults.MagicMarkWireGuardEncrypted
+	fwMark := linux_defaults.MagicMarkWireGuardEncrypted
 	cfg := wgtypes.Config{
 		PrivateKey:   &a.privKey,
 		ListenPort:   &a.listenPort,
 		ReplacePeers: false,
-	//	FirewallMark: &fwMark,
+		FirewallMark: &fwMark,
 	}
 	if err := a.wgClient.ConfigureDevice(types.IfaceName, cfg); err != nil {
 		return fmt.Errorf("failed to configure WireGuard device: %w", err)
