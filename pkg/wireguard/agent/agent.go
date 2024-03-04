@@ -572,9 +572,7 @@ func (a *Agent) reassemblyMasterHubConfig( ) error {
       //}
       a.peerMasternode.allowedIPs = filtered
 
-
-      //resambely peer node's allowed IP to peermasternode.allowedIPS
-
+      //reassembly peer node's allowed IP to peermasternode.allowedIPS
       for _, p := range a.peerByNodeName {
                 if (p != nil) {
 			for _, allowedIP := range p.allowedIPs {
