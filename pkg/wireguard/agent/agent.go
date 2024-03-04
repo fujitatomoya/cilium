@@ -266,11 +266,11 @@ func (a *Agent) Init(ipcache *ipcache.IPCache, mtuConfig mtu.Configuration) erro
 		},
 	}
 
-        // checkpoint wirguard  hub-spoke mode setting
-	if option.Config.EnableWireguardHubmode {
-                        fmt.Println("!!!!!!!!!!!!!!!!!! Using wireguard hub-spoke mode")
+        // checkpoint wirguard point-to-point mode or hub-spoke mode
+	if option.Config.WireguardTopology == "hubspoke" {
+		fmt.Println("!!!!!!!!!!!!!!!!!! Using wireguard hub-spoke mode")
 	} else {
-		fmt.Println("!!!!!!!!!!!!!!!!!! Using wireguard peer-2-peer mode")
+		fmt.Println("!!!!!!!!!!!!!!!!!! Using wireguard point-2-point mode")
 	}
 
 	err := netlink.LinkAdd(link)
@@ -487,7 +487,6 @@ func (a *Agent) UpdatePeer(nodeName, pubKeyHex string, nodeIPv4, nodeIPv6 net.IP
 		a.peerMasternode.endpoint = masterepAddr
 		a.peerMasternode.nodeIPv4 = peerMaster.nodeIPv4
 		a.peerMasternode.nodeIPv6 = peerMaster.nodeIPv6
-		//peerMasternode.allowedIPs = append(peerMasternode.allowedIPs, allowedIPs)
 	}
 
 	log.WithFields(logrus.Fields{
@@ -498,11 +497,10 @@ func (a *Agent) UpdatePeer(nodeName, pubKeyHex string, nodeIPv4, nodeIPv6 net.IP
 		logfields.IPAddrs:  peer.allowedIPs,
 	}).Debug("+++++++++Updating peer")
 
-	if option.Config.EnableWireguardHubmode {
+	if  option.Config.WireguardTopology == "hubspoke" {
 		if a.isMasterNode {
 			fmt.Println("++++++++ hub configued:")
 			if err := a.updatePeerByConfig(peer); err != nil {
-				//fmt.Println("++++++++ hub configued:")
 				return err
 			}
 		}
@@ -510,14 +508,12 @@ func (a *Agent) UpdatePeer(nodeName, pubKeyHex string, nodeIPv4, nodeIPv6 net.IP
 		if a.isMasterNode == false && a.peerMasternode.endpoint != nil {
 			fmt.Println("++++++++ spoke configured:")
 			if err := a.updatePeerByConfig(a.peerMasternode); err != nil {
-				//fmt.Println("++++++++ spoke configured:")
 				return err
 			}
 		}
 	} else {
 		fmt.Println("++++++++ peer-2-peer configued:")
                 if err := a.updatePeerByConfig(peer); err != nil {
-                       //fmt.Println("++++++++ hub configued:")
                        return err
                  }
 	}
@@ -715,7 +711,7 @@ func (a *Agent) OnIPIdentityCacheChange(modType ipcache.CacheModification, cidrC
         if err != nil {
         }
 
-	if option.Config.EnableWireguardHubmode {
+	if option.Config.WireguardTopology == "hubspoke" {
 		if updatedPeer != nil && a.isMasterNode { //&& updatedPeer.endpoint != nil {
 			fmt.Println("============ on ipcacheupsert hub configured:")
 			if err := a.updatePeerByConfig(updatedPeer); err != nil {
