@@ -474,7 +474,7 @@ func (a *Agent) UpdatePeer(nodeName, pubKeyHex string, nodeIPv4, nodeIPv6 net.IP
         err = a.reassemblyMasterHubConfig()
 
 	if err != nil {
-		return fmt.Errorf("failed to reasmbely master hub configs: %w", err)
+		return fmt.Errorf("failed to reassembly master hub configs: %w", err)
 	}
 	// Now here configure the master (hub) peer config
 	masterNodeFullname := "kubernetes/" + a.masterNodeName
