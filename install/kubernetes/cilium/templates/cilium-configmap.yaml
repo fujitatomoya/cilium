@@ -592,8 +592,8 @@ data:
     {{- if .Values.encryption.wireguard.persistentKeepalive }}
   wireguard-persistent-keepalive: {{ .Values.encryption.wireguard.persistentKeepalive | quote }}
     {{- end }}
-    {{- if .Values.encryption.wireguard.hubMode }}
-  enable-wireguard-hub-mode: {{ .Values.encryption.wireguard.hubMode | quote }}
+    {{- if .Values.encryption.wireguard.topology }}
+  wireguard-topology: {{ .Values.encryption.wireguard.topology | quote }}
     {{- end }}
   {{- end }}
   {{- if .Values.encryption.nodeEncryption }}
