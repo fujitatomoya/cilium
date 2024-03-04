@@ -436,7 +436,6 @@ func (a *Agent) UpdatePeer(nodeName, pubKeyHex string, nodeIPv4, nodeIPv6 net.IP
 				})
 			}
 		}
-
 		allowedIPs = append(allowedIPs, a.ipCache.LookupByHostRLocked(lookupIPv4, lookupIPv6)...)
 	}
 
@@ -453,8 +452,8 @@ func (a *Agent) UpdatePeer(nodeName, pubKeyHex string, nodeIPv4, nodeIPv6 net.IP
 	if err != nil {
 		return fmt.Errorf("failed to resolve peer endpoint address: %w", err)
 	}
-
-        peer := &peerConfig{
+	
+	peer := &peerConfig{
 		pubKey:     pubKey,
 		endpoint:   epAddr,
 		nodeIPv4:   nodeIPv4,
