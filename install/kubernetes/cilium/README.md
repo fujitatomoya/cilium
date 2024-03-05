@@ -306,7 +306,7 @@ contributors across the globe, there is almost always someone available to help.
 | encryption.type | string | `"ipsec"` | Encryption method. Can be either ipsec or wireguard. |
 | encryption.wireguard.persistentKeepalive | string | `"0s"` | Controls Wireguard PersistentKeepalive option. Set 0s to disable. |
 | encryption.wireguard.userspaceFallback | bool | `false` | Enables the fallback to the user-space implementation. |
-| encryption.wireguard.hubMode | bool | `false` | Enables wireguard hub spoke mode. |
+| encryption.wireguard.topology | string | `"p2p"` | Controls wireguard topology either hub-spoke mode or point-to-point mode. |
 | endpointHealthChecking.enabled | bool | `true` | Enable connectivity health checking between virtual endpoints. |
 | endpointRoutes.enabled | bool | `false` | Enable use of per endpoint routes instead of routing via the cilium_host interface. |
 | endpointStatus | object | `{"enabled":false,"status":""}` | Enable endpoint status. Status can be: policy, health, controllers, log and / or state. For 2 or more options use a space. |
