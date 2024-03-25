@@ -775,7 +775,7 @@ const (
 	WireguardPersistentKeepalive = "wireguard-persistent-keepalive"
 
 	// WireguardTopology is the name of the option that enables WireGuard topology for point-to-point mode or hub-spoke mode
-        WireguardTopology = "wireguard-topology"
+	WireguardTopology = "wireguard-topology"
 
 	// NodeEncryptionOptOutLabels is the name of the option for the node-to-node encryption opt-out labels
 	NodeEncryptionOptOutLabels = "node-encryption-opt-out-labels"
@@ -1725,7 +1725,7 @@ type DaemonConfig struct {
 	WireguardPersistentKeepalive time.Duration
 
 	// WireguardTopology keep the wireguard topology for point-to-point mode or hub-spoke mode
-        WireguardTopology string
+	WireguardTopology string
 
 	// EnableL2Announcements enables L2 announcement of service IPs
 	EnableL2Announcements bool
