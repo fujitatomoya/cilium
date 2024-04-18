@@ -15,8 +15,6 @@ import (
 	"os"
 	"strconv"
 
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/go-openapi/strfmt"
@@ -45,6 +43,8 @@ import (
 	"github.com/cilium/cilium/pkg/option"
 	"github.com/cilium/cilium/pkg/sysctl"
 	"github.com/cilium/cilium/pkg/wireguard/types"
+
+	k8sClient "github.com/cilium/cilium/pkg/k8s/client"
 )
 
 const (
@@ -91,7 +91,8 @@ type Agent struct {
 }
 
 // NewAgent creates a new WireGuard Agent
-func NewAgent(privKeyPath string, localNodeStore *node.LocalNodeStore) (*Agent, error) {
+func NewAgent(privKeyPath string, localNodeStore *node.LocalNodeStore, clientset k8sClient.Clientset) (*Agent, error) {
+	fmt.Println("--------------in NewAget", privKeyPath, localNodeStore)
 	key, err := loadOrGeneratePrivKey(privKeyPath)
 	if err != nil {
 		return nil, err
@@ -106,10 +107,6 @@ func NewAgent(privKeyPath string, localNodeStore *node.LocalNodeStore) (*Agent, 
 	masternodename := ""
 
 	//Try to get the cluster's master node then consider it as a hub
-	//The clientset
-	config, _ := rest.InClusterConfig()
-	clientset, _ := kubernetes.NewForConfig(config)
-
 	//Get the master node's name
 	nodes, _ := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	for _, node := range nodes.Items{
